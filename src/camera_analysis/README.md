@@ -13,16 +13,19 @@ source install/setup.bash
 ## Running
 
 **Default (camera device 0 at 30 FPS):**
+
 ```bash
 ros2 run camera_analysis camera_node
 ```
 
 **With parameters:**
+
 ```bash
 ros2 run camera_analysis camera_node --ros-args -p camera_source:=0 -p frame_rate:=30
 ```
 
 **From video file:**
+
 ```bash
 ros2 run camera_analysis camera_node --ros-args -p camera_source:="/path/to/video.mp4"
 ```

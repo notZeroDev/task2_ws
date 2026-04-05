@@ -14,15 +14,15 @@ class CameraNode(Node):
     """ROS 2 Node for streaming camera/video frames."""
 
     def __init__(self):
-        super().__init__('camera_node')
+        super().__init__("camera_node")
 
         # Declare parameters
-        self.declare_parameter('camera_source', '0')  # Default to camera 0
-        self.declare_parameter('frame_rate', 30)      # Default to 30 FPS
+        self.declare_parameter("camera_source", "0")  # Default to camera 0
+        self.declare_parameter("frame_rate", 30)  # Default to 30 FPS
 
         # Get parameter values
-        camera_source = self.get_parameter('camera_source').value
-        self.frame_rate = self.get_parameter('frame_rate').value
+        camera_source = self.get_parameter("camera_source").value
+        self.frame_rate = self.get_parameter("frame_rate").value
 
         # Convert camera_source to appropriate type
         try:
@@ -36,17 +36,17 @@ class CameraNode(Node):
             self.cap = cv2.VideoCapture(self.camera_source)
             if not self.cap.isOpened():
                 self.get_logger().error(
-                    f'Failed to open camera/video source: {self.camera_source}'
+                    f"Failed to open camera/video source: {self.camera_source}"
                 )
-                raise RuntimeError(f'Cannot open camera source: {self.camera_source}')
-            
-            self.get_logger().info(f'Camera source opened: {self.camera_source}')
+                raise RuntimeError(f"Cannot open camera source: {self.camera_source}")
+
+            self.get_logger().info(f"Camera source opened: {self.camera_source}")
         except Exception as e:
-            self.get_logger().error(f'Error initializing camera: {e}')
+            self.get_logger().error(f"Error initializing camera: {e}")
             raise
 
         # Create publisher
-        self.publisher_ = self.create_publisher(Image, '/camera_frames', 10)
+        self.publisher_ = self.create_publisher(Image, "/camera_frames", 10)
 
         # Create bridge for converting OpenCV images to ROS messages
         self.bridge = CvBridge()
@@ -56,7 +56,7 @@ class CameraNode(Node):
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
         self.get_logger().info(
-            f'Camera node initialized with frame_rate={self.frame_rate} FPS'
+            f"Camera node initialized with frame_rate={self.frame_rate} FPS"
         )
 
     def timer_callback(self):
@@ -64,22 +64,22 @@ class CameraNode(Node):
         ret, frame = self.cap.read()
 
         if not ret:
-            self.get_logger().warn('Failed to read frame from camera')
+            self.get_logger().warn("Failed to read frame from camera")
             return
 
         try:
             # Convert frame to ROS Image message
-            msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+            msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
             self.publisher_.publish(msg)
-            self.get_logger().debug('Frame published')
+            self.get_logger().debug("Frame published")
         except Exception as e:
-            self.get_logger().error(f'Error publishing frame: {e}')
+            self.get_logger().error(f"Error publishing frame: {e}")
 
     def destroy_node(self):
         """Clean up resources."""
         if self.cap:
             self.cap.release()
-        self.get_logger().info('Camera released')
+        self.get_logger().info("Camera released")
         super().destroy_node()
 
 
@@ -90,11 +90,11 @@ def main(args=None):
     try:
         rclpy.spin(camera_node)
     except KeyboardInterrupt:
-        camera_node.get_logger().info('Shutting down camera node...')
+        camera_node.get_logger().info("Shutting down camera node...")
     finally:
         camera_node.destroy_node()
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
