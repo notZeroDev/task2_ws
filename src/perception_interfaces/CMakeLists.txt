@@ -14,6 +14,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectionList.msg"
   "msg/SceneAnalysis.msg"
   "msg/SceneObject.msg"
+  "msg/SecurityEvent.msg"
+  "msg/SecurityAlert.msg"
   DEPENDENCIES std_msgs
 )
 
