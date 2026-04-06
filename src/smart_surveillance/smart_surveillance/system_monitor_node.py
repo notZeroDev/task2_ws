@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-System Monitor Node
--------------------
-Subscribes to ALL main topics and prints a live status table to the
-terminal every second.  Tracks:
-  - Whether each topic is alive (last message age)
-  - Detection count and object labels from the latest frame
-  - Latest depth values
-  - Dangerous object flags
-  - Latest security events and alerts
-  - Rolling event/alert counters for the session
-"""
 
 import time
 from collections import deque
@@ -19,179 +7,93 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 
-from smart_surveillance_interfaces.msg import (
-    DetectedObjects,
-    ObjectDepth,
-    SceneAnalysis,
-    SecurityEvent,
-    SecurityAlert,
-)
+from smart_surveillance_interfaces.msg import DetectedObjects, ObjectDepth, SceneAnalysis, SecurityEvent, SecurityAlert
 
-
-# ── helpers ────────────────────────────────────────────────────────────── #
-
-def _age(ts: float) -> str:
-    """Return human-readable age string, or 'NO DATA' if ts is None."""
-    if ts is None:
-        return 'NO DATA'
-    a = time.time() - ts
-    if a < 2.0:
-        return f'{a:.1f}s  ✓'
-    return f'{a:.1f}s  ✗'
-
-
-def _trunc(s: str, n: int = 40) -> str:
-    return s if len(s) <= n else s[:n - 1] + '…'
-
-
-# ── node ───────────────────────────────────────────────────────────────── #
 
 class SystemMonitorNode(Node):
     def __init__(self):
         super().__init__('system_monitor_node')
 
-        # ── last-seen timestamps (None = never received) ── #
-        self._ts = {
-            '/camera_frames':    None,
+        self._last_seen = {
+            '/camera_frames': None,
             '/detected_objects': None,
-            '/object_depth':     None,
-            '/scene_analysis':   None,
-            '/security_event':   None,
-            '/security_alert':   None,
+            '/object_depth': None,
+            '/scene_analysis': None,
+            '/security_event': None,
+            '/security_alert': None,
         }
 
-        # ── latest payload snapshots ── #
-        self._detections: list[str]  = []
-        self._depths:     list[str]  = []
-        self._dangerous:  list[str]  = []
-        self._last_event:  str = '—'
-        self._last_alert:  str = '—'
-
-        # ── session counters ── #
+        self._detections = []
+        self._depths = []
+        self._dangerous = []
+        self._last_event = 'none'
+        self._last_alert = 'none'
         self._event_count = 0
         self._alert_count = 0
         self._frame_count = 0
+        self._frame_times = deque(maxlen=30)
 
-        # ── rolling FPS (last 30 frame timestamps) ── #
-        self._frame_times: deque = deque(maxlen=30)
+        self.create_subscription(Image, '/camera_frames', self.frames_callback, 10)
+        self.create_subscription(DetectedObjects, '/detected_objects', self.detections_callback, 10)
+        self.create_subscription(ObjectDepth, '/object_depth', self.depth_callback, 10)
+        self.create_subscription(SceneAnalysis, '/scene_analysis', self.scene_callback, 10)
+        self.create_subscription(SecurityEvent, '/security_event', self.event_callback, 10)
+        self.create_subscription(SecurityAlert, '/security_alert', self.alert_callback, 10)
 
-        # ── subscribers ── #
-        self.create_subscription(
-            Image,            '/camera_frames',    self._cb_frames,    10)
-        self.create_subscription(
-            DetectedObjects,  '/detected_objects', self._cb_detections, 10)
-        self.create_subscription(
-            ObjectDepth,      '/object_depth',     self._cb_depth,     10)
-        self.create_subscription(
-            SceneAnalysis,    '/scene_analysis',   self._cb_scene,     10)
-        self.create_subscription(
-            SecurityEvent,    '/security_event',   self._cb_event,     10)
-        self.create_subscription(
-            SecurityAlert,    '/security_alert',   self._cb_alert,     10)
-
-        # ── 1 Hz display timer ── #
-        self.create_timer(1.0, self._display)
-
+        self.create_timer(1.0, self.display)
         self.get_logger().info('System Monitor Node started')
 
-    # ── callbacks ──────────────────────────────────────────────────────── #
-
-    def _cb_frames(self, _msg: Image):
+    def frames_callback(self, _msg):
         now = time.time()
-        self._ts['/camera_frames'] = now
+        self._last_seen['/camera_frames'] = now
         self._frame_count += 1
         self._frame_times.append(now)
 
-    def _cb_detections(self, msg: DetectedObjects):
-        self._ts['/detected_objects'] = time.time()
-        self._detections = [
-            f'{lbl}({conf:.0%})'
-            for lbl, conf in zip(msg.labels, msg.confidences)
-        ]
+    def detections_callback(self, msg):
+        self._last_seen['/detected_objects'] = time.time()
+        self._detections = [f'{l}({c:.0%})' for l, c in zip(msg.labels, msg.confidences)]
 
-    def _cb_depth(self, msg: ObjectDepth):
-        self._ts['/object_depth'] = time.time()
-        self._depths = [
-            f'{lbl}:{d:.2f}'
-            for lbl, d in zip(msg.labels, msg.depths)
-        ]
+    def depth_callback(self, msg):
+        self._last_seen['/object_depth'] = time.time()
+        self._depths = [f'{l}:{d:.2f}' for l, d in zip(msg.labels, msg.depths)]
 
-    def _cb_scene(self, msg: SceneAnalysis):
-        self._ts['/scene_analysis'] = time.time()
-        self._dangerous = [
-            msg.labels[i]
-            for i in range(len(msg.labels))
-            if msg.is_dangerous[i]
-        ]
+    def scene_callback(self, msg):
+        self._last_seen['/scene_analysis'] = time.time()
+        self._dangerous = [msg.labels[i] for i in range(len(msg.labels)) if msg.is_dangerous[i]]
 
-    def _cb_event(self, msg: SecurityEvent):
-        self._ts['/security_event'] = time.time()
+    def event_callback(self, msg):
+        self._last_seen['/security_event'] = time.time()
         self._event_count += 1
-        self._last_event = (
-            f'{msg.event_type}  obj={msg.object_label}  '
-            f'sev={msg.severity}  depth={msg.object_depth:.2f}'
-        )
+        self._last_event = f'{msg.event_type} | {msg.object_label} | sev={msg.severity}'
 
-    def _cb_alert(self, msg: SecurityAlert):
-        self._ts['/security_alert'] = time.time()
+    def alert_callback(self, msg):
+        self._last_seen['/security_alert'] = time.time()
         self._alert_count += 1
         self._last_alert = msg.alert_message
 
-    # ── display ────────────────────────────────────────────────────────── #
-
-    def _fps(self) -> str:
+    def fps(self):
         if len(self._frame_times) < 2:
-            return '—'
+            return 0.0
         elapsed = self._frame_times[-1] - self._frame_times[0]
-        if elapsed <= 0:
-            return '—'
-        return f'{(len(self._frame_times) - 1) / elapsed:.1f}'
+        return (len(self._frame_times) - 1) / elapsed if elapsed > 0 else 0.0
 
-    def _display(self):
-        W = 62
-        sep  = '─' * W
-        dsep = '═' * W
+    def display(self):
+        print('\n--- SYSTEM MONITOR ---')
+        for topic, ts in self._last_seen.items():
+            if ts is None:
+                status = 'NO DATA'
+            elif time.time() - ts < 2.0:
+                status = 'OK'
+            else:
+                status = 'STALE'
+            print(f'  {topic}: {status}')
 
-        lines = [
-            '',
-            dsep,
-            '  SMART SURVEILLANCE — SYSTEM MONITOR'.center(W),
-            dsep,
-            '',
-            '  TOPIC HEALTH',
-            sep,
-        ]
+        print(f'  FPS: {self.fps():.1f}  |  Frames: {self._frame_count}')
+        print(f'  Detections: {self._detections or "none"}')
+        print(f'  Dangerous:  {self._dangerous or "none"}')
+        print(f'  Events: {self._event_count}  |  Last: {self._last_event}')
+        print(f'  Alerts: {self._alert_count}  |  Last: {self._last_alert}')
 
-        for topic, ts in self._ts.items():
-            lines.append(f'  {topic:<26}  {_age(ts)}')
-
-        lines += [
-            '',
-            sep,
-            f'  Camera FPS (rolling 30):  {self._fps()}',
-            f'  Total frames received:    {self._frame_count}',
-            sep,
-            '',
-            '  LATEST DETECTIONS',
-            sep,
-            f'  Objects : {_trunc(", ".join(self._detections) or "none")}',
-            f'  Depths  : {_trunc(", ".join(self._depths)     or "none")}',
-            f'  Danger  : {_trunc(", ".join(self._dangerous)  or "none")}',
-            '',
-            '  SECURITY',
-            sep,
-            f'  Events  (total): {self._event_count}',
-            f'  Alerts  (total): {self._alert_count}',
-            f'  Last event : {_trunc(self._last_event)}',
-            f'  Last alert : {_trunc(self._last_alert)}',
-            dsep,
-            '',
-        ]
-
-        print('\n'.join(lines), flush=True)
-
-
-# ── main ───────────────────────────────────────────────────────────────── #
 
 def main(args=None):
     rclpy.init(args=args)

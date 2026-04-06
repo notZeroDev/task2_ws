@@ -14,7 +14,6 @@ class EventLoggerNode(Node):
     def __init__(self):
         super().__init__('event_logger_node')
 
-        # CSV log file — written to the current working directory
         self.declare_parameter('log_file', 'surveillance_log.csv')
         log_file = self.get_parameter('log_file').value
 
@@ -38,8 +37,6 @@ class EventLoggerNode(Node):
             f'Event Logger Node started  (log={log_file})'
         )
 
-    # ------------------------------------------------------------------ #
-
     def _open_log(self, path: str):
         file_exists = os.path.isfile(path)
         self._log_fh = open(path, 'a', newline='')
@@ -54,7 +51,6 @@ class EventLoggerNode(Node):
     def _now(self) -> str:
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-    # ------------------------------------------------------------------ #
 
     def event_callback(self, msg: SecurityEvent):
         row = [
