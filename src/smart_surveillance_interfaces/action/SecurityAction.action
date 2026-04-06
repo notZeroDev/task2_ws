@@ -1,0 +1,8 @@
+string event_type
+int32 severity
+---
+bool success
+string summary
+---
+string status_message
+float32 progress
