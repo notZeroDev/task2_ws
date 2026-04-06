@@ -9,10 +9,14 @@ from rcl_interfaces.msg import SetParametersResult
 class CameraStreamNode(Node):
     def __init__(self):
         super().__init__('camera_stream_node')
+
+        self.video_path = "s"
         
         # Declare parameters
-        self.declare_parameter('camera_source', '0')
+        self.declare_parameter('camera_source', 'data/video.mp4')
         self.declare_parameter('frame_rate', 30.0)
+
+        self.frame_id = 0
 
         self.bridge = CvBridge()
         self.publisher_ = self.create_publisher(Image, '/camera_frames', 10)
@@ -87,8 +91,10 @@ class CameraStreamNode(Node):
             # Convert OpenCV (BGR) to ROS Image message
             msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
             msg.header.stamp = self.get_clock().now().to_msg()
-            msg.header.frame_id = "camera_link"
+            msg.header.frame_id = str(self.frame_id)
             self.publisher_.publish(msg)
+            self.frame_id += 1
+            self.get_logger().info(f"PUBLISHING: frame {self.frame_id}")
         else:
             # If it's a file, loop back to the start
             source = self.get_parameter('camera_source').value
