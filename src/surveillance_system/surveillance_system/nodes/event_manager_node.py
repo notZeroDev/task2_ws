@@ -3,7 +3,6 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Header
-
 from perception_interfaces.msg import SceneAnalysis, SecurityEvent
 
 
