@@ -35,6 +35,7 @@ class DepthEstimatorNode(Node):
         self.input_size = self.get_parameter('input_size').value
 
         self.frame_count = 0
+        self.depth_frame_id = 0
 
         # Load the model
         self.get_logger().info(f"Loading DepthAnythingV2 ({self.encoder})...")
@@ -77,14 +78,13 @@ class DepthEstimatorNode(Node):
             return
             
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self.depth_frame_id += 1
         
-        # Submit to executor
-        self.future = self.thread_executor.submit(self.infer_depth, frame)
+        # Submit to executor, passing current frame_id
+        self.future = self.thread_executor.submit(self.infer_depth, frame, self.depth_frame_id)
         self.future.add_done_callback(self.publish_result)
 
-    def infer_depth(self, frame):
-        # Resize inside the worker thread
-        h, w = frame.shape[:2]
+    def infer_depth(self, frame, frame_id):
         # model.infer_image expects BGR input and input_size
         depth = self.model.infer_image(frame, input_size=self.input_size)
         
@@ -99,8 +99,7 @@ class DepthEstimatorNode(Node):
         avg_depth = float(np.mean(depth_norm))
         near_ratio = float(np.mean(depth_norm > self.near_threshold))
         
-        # Optional: return bounds for advanced debugging
-        return f"avg_depth={avg_depth:.2f}; near_ratio={near_ratio:.2f}; min={depth_min:.2f}; max={depth_max:.2f}"
+        return f"frame_id={frame_id}; avg_depth={avg_depth:.2f}; near_ratio={near_ratio:.2f}; min={depth_min:.2f}; max={depth_max:.2f}"
 
     def publish_result(self, future):
         try:

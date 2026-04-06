@@ -33,3 +33,15 @@ venv/
 Thumbs.db
 
 ROS.code-workspace
+
+# -----------------------------------------------------------------------------
+# ML MODELS & EXTERNAL DEPENDENCIES
+# -----------------------------------------------------------------------------
+
+# Cloned external repos (not part of this project)
+Depth-Anything-V2/
+
+# Model weights — large binary files, download separately
+checkpoints/
+*.pt
+*.pth
